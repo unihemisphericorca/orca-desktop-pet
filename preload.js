@@ -7,5 +7,11 @@ contextBridge.exposeInMainWorld('pet', {
   hitTest: (overOrca) => ipcRenderer.send('hit-test', overOrca),
   releaseFocus: () => ipcRenderer.send('release-focus'),
   quit: () => ipcRenderer.send('quit'),
+  spotify: {
+    connect: () => ipcRenderer.invoke('spotify-connect'),
+    status: () => ipcRenderer.invoke('spotify-status'),
+    control: (act) => ipcRenderer.invoke('spotify-control', act),
+    onUpdate: (cb) => ipcRenderer.on('spotify-update', (_e, data) => cb(data))
+  },
   moveBy: (dx, dy) => ipcRenderer.send('move-by', dx, dy)
 });

@@ -6,3 +6,5 @@ test-*.png
 shot-window.png
 rect.json
 .DS_Store
+spotify.json
+spotify-token.json

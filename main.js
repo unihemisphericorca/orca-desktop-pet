@@ -7,7 +7,8 @@
 //     EXCEPT when the cursor is over the orca, where we turn the flag off again.
 const path = require('path');
 const fs = require('fs');
-const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, shell } = require('electron');
+const { Spotify } = require('./spotify');
 const LOG = path.join(__dirname, 'debug.log');
 function log(...a) {
   try { fs.appendFileSync(LOG, new Date().toISOString() + ' ' + a.join(' ') + '\n'); } catch (e) {}
@@ -15,8 +16,17 @@ function log(...a) {
 
 let win = null;
 let tray = null;
+let spotify = null;
+
+// Portable builds unpack to a temp dir, so config and tokens live next to the .exe
+// instead — otherwise the Spotify login would be forgotten on every launch.
+function dataDir() {
+  if (!app.isPackaged) return __dirname;                       // running from source
+  return process.env.PORTABLE_EXECUTABLE_DIR                    // portable .exe: its own folder
+    || path.dirname(process.execPath);
+}
 let clickThrough = true;
-let orcaRect = null;        // {x, y, w, h} in window CSS px, reported by the renderer
+let orcaRects = null;        // {x, y, w, h} in window CSS px, reported by the renderer
 
 // Full work area of the current display: she roams the actual desktop, not a box.
 // Clicks still pass through everywhere except her body and the bubble controls.
@@ -134,11 +144,12 @@ function createWindow() {
 
 // The renderer tells us when the cursor is over the orca's body vs empty space.
 let rectLogged = false;
-ipcMain.on('orca-rect', (_evt, rect) => {
-  orcaRect = rect;
-  if (!rectLogged && rect && rect.w > 0) {
+ipcMain.on('orca-rect', (_evt, rects) => {
+  orcaRects = rects;
+  if (!rectLogged && rects && rects.body && rects.body.w > 0) {
     rectLogged = true;
-    log('orca screen rect', JSON.stringify({ x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.w), h: Math.round(rect.h) }));
+    const b = rects.body;
+    log('orca screen rect', JSON.stringify({ x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h) }));
   }
 });
 
@@ -154,16 +165,19 @@ ipcMain.on('hit-test', (_evt, overOrca) => {
 // driven from the OS cursor position compared against the orca's reported screen rectangle.
 function startHitTesting() {
   setInterval(() => {
-    if (!win || win.isDestroyed() || !orcaRect) return;
+    if (!win || win.isDestroyed() || !orcaRects) return;
     let inside = false;
     try {
       const pt = screen.getCursorScreenPoint();
       const b = win.getBounds();
       const lx = pt.x - b.x;
       const ly = pt.y - b.y;
-      const pad = 90;   // tolerance: near-misses should still count as clicking her
-      inside = lx >= orcaRect.x - pad && lx <= orcaRect.x + orcaRect.w + pad &&
-               ly >= orcaRect.y - pad && ly <= orcaRect.y + orcaRect.h + pad;
+      const within = (r, pad) => !!r &&
+        lx >= r.x - pad && lx <= r.x + r.w + pad &&
+        ly >= r.y - pad && ly <= r.y + r.h + pad;
+      // Tight to her body and to the card — anything else stays click-through, so the
+      // desktop behind the overlay keeps working normally.
+      inside = within(orcaRects.body, 8) || within(orcaRects.card, 4);
     } catch (_) {
       inside = false;
     }
@@ -177,6 +191,20 @@ function startHitTesting() {
 
 ipcMain.on('release-focus', () => { if (win && !win.isDestroyed()) win.blur(); });
 
+ipcMain.handle('spotify-connect', async () => {
+  if (!spotify) return { ok: false, reason: 'not-ready' };
+  if (!spotify.hasClientId()) return { ok: false, reason: 'no-client-id' };
+  return spotify.connect((url) => shell.openExternal(url));
+});
+
+ipcMain.handle('spotify-status', () => ({
+  connected: spotify ? spotify.isConnected() : false,
+  hasClientId: spotify ? spotify.hasClientId() : false,
+  configPath: spotify ? spotify.cfgFile : null
+}));
+
+ipcMain.handle('spotify-control', async (_e, act) => (spotify ? spotify.control(act) : { ok: false }));
+
 ipcMain.on('quit', () => app.quit());
 
 ipcMain.on('move-by', (_evt, dx, dy) => {
@@ -188,6 +216,12 @@ ipcMain.on('move-by', (_evt, dx, dy) => {
 app.whenReady().then(() => {
   createWindow();
   startHitTesting();
+
+  spotify = new Spotify(dataDir(), log);
+  spotify.onUpdate = (data) => {
+    if (win && !win.isDestroyed()) win.webContents.send('spotify-update', data);
+  };
+  spotify.startPolling();
 
   // Tray icon so the pet can always be quit or paused, even while click-through is on.
   const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'tray.png'));
@@ -201,6 +235,20 @@ app.whenReady().then(() => {
         checked: true,
         click: (item) => { if (win && !win.isDestroyed()) win.webContents.send('natural-mode', item.checked); }
       },
+      { type: 'separator' },
+      {
+        label: 'Connect Spotify…',
+        click: async () => {
+          if (!spotify) return;
+          if (!spotify.hasClientId()) {
+            log('spotify: no client id; expected at', spotify.cfgFile);
+            return;
+          }
+          const r = await spotify.connect((url) => shell.openExternal(url));
+          log('spotify: connect result', JSON.stringify(r));
+        }
+      },
+      { label: 'Disconnect Spotify', click: () => spotify && spotify.disconnect() },
       { type: 'separator' },
       {
         label: 'Credits: Orca model by Lippanen (CC BY 4.0)',

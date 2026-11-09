@@ -695,16 +695,17 @@ function frame() {
     }
     let rx = x0, ry = y0, rw = x1 - x0, rh = y1 - y0;
 
-    // include the card so its buttons are clickable too
+    // Her body and the card are reported as TWO rects, not one merged box: a merged box
+    // would swallow clicks in the empty gap between her head and the card.
+    const body = { x: rx, y: ry, w: rw, h: rh };
+    let card = null;
     if (bubble.classList.contains('show')) {
       const br = bubble.getBoundingClientRect();
-      rx = Math.min(rx, br.left); ry = Math.min(ry, br.top);
-      rw = Math.max(rx + rw, br.right) - rx;
-      rh = Math.max(ry + rh, br.bottom) - ry;
+      if (br.width > 4 && br.height > 4) card = { x: br.left, y: br.top, w: br.width, h: br.height };
     }
     window.__centreX = rx + rw / 2;
     window.__centreY = ry + rh / 2;
-    if (window.pet && window.pet.reportRect) window.pet.reportRect({ x: rx, y: ry, w: rw, h: rh });
+    if (window.pet && window.pet.reportRect) window.pet.reportRect({ body, card });
 
     // contact shadow: an ellipse under the body, sized from what the camera sees
     const shadowEl = document.getElementById('shadow');
@@ -783,7 +784,7 @@ canvas.addEventListener('pointermove', (e) => {
 });
 
 canvas.addEventListener('pointerdown', (e) => {
-  const nearMiss = Math.hypot(e.clientX - window.__centreX, e.clientY - window.__centreY) < 150;
+  const nearMiss = Math.hypot(e.clientX - window.__centreX, e.clientY - window.__centreY) < 22;
   const onBody = hitTest(e.clientX, e.clientY);
   console.log('pointerdown', JSON.stringify({ x: Math.round(e.clientX), y: Math.round(e.clientY), onBody, nearMiss }));
   if (!onBody && !nearMiss) return;
@@ -874,8 +875,8 @@ window.__spotify = {
   update(t) {
     if (!t) {
       sp.status.textContent = 'Waiting for music';
-      sp.title.textContent = 'Not connected';
-      sp.artist.textContent = 'Spotify is not wired yet';
+      sp.title.textContent = 'Nothing playing';
+      sp.artist.textContent = 'Start a track in Spotify';
       sp.dot.classList.add('idle');
       sp.prog.style.width = '0%';
       return;
@@ -891,6 +892,43 @@ window.__spotify = {
     sp.tLeft.textContent = '-' + fmt((t.duration || 0) - (t.progress || 0));
   }
 };
+// Spotify is driven by the main process: it holds the tokens and polls the Web API.
+// The card never invents a track — with no playback it says so honestly.
+if (window.pet && window.pet.spotify) {
+  window.pet.spotify.onUpdate((data) => {
+    if (!data) {
+      window.__spotify.update(null);
+      return;
+    }
+    if (data.needsAuth) {
+      sp.status.textContent = 'Reconnect needed';
+      sp.title.textContent = 'Spotify session expired';
+      sp.artist.textContent = 'Tray menu → Connect Spotify';
+      sp.dot.classList.add('idle');
+      return;
+    }
+    window.__spotify.update(data);
+  });
+
+  document.querySelectorAll('.controls button').forEach((b) => {
+    b.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const r = await window.pet.spotify.control(b.dataset.act);
+      if (r && r.status === 403) {
+        sp.status.textContent = 'Premium required';
+        sp.artist.textContent = 'Spotify limits controls to Premium';
+      }
+    });
+  });
+
+  window.pet.spotify.status().then((s) => {
+    if (!s.connected) {
+      sp.title.textContent = 'Not connected';
+      sp.artist.textContent = s.hasClientId ? 'Tray → Connect Spotify' : 'Add spotify.json, then connect';
+    }
+  }).catch(() => {});
+}
+
 window.__spotify.update(null);
 
 document.querySelectorAll('.controls button').forEach((b) => {

@@ -1,6 +1,6 @@
 {
   "name": "orca-desktop-pet",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A little glass orca that swims across your desktop.",
   "main": "main.js",
   "scripts": {
@@ -22,6 +22,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "spotify.js",
       "index.html",
       "bundle.js",
       "assets/**"

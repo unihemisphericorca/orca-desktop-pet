@@ -1,0 +1,4 @@
+{
+  "_comment": "Copy this file to spotify.json (same folder as OrcaPet.exe) and paste your Client ID below. See README → Spotify.",
+  "clientId": "paste-your-client-id-here"
+}
