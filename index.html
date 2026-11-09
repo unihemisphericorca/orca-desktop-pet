@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Orca</title>
+<style>
+  * { box-sizing: border-box; user-select: none; }
+  html, body {
+    margin: 0; padding: 0; width: 100vw; height: 100vh;
+    background: transparent; overflow: hidden;
+    font-family: "Segoe UI", -apple-system, system-ui, sans-serif;
+  }
+  #stage { position: relative; width: 100vw; height: 100vh; }
+
+  /* soft contact shadow under her: she floats above the desktop instead of being pasted on */
+  #shadow {
+    position: absolute; left: 0; top: 0; width: 120px; height: 22px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center, rgba(0, 10, 20, 0.42) 0%,
+                                rgba(0, 10, 20, 0.22) 45%, rgba(0, 10, 20, 0) 72%);
+    filter: blur(9px);
+    opacity: 0; z-index: 0; pointer-events: none;
+    transition: opacity .4s ease;
+  }
+
+  /* soft contact shadow under her, so she reads as floating above the desktop
+     rather than pasted onto it */
+  #shadow {
+    position: absolute; left: 0; top: 0; width: 120px; height: 22px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center, rgba(0, 10, 20, 0.42) 0%,
+                                rgba(0, 10, 20, 0.22) 45%, rgba(0, 10, 20, 0) 72%);
+    filter: blur(9px);
+    opacity: 0; z-index: 0; pointer-events: none;
+    transition: opacity .4s ease;
+  }
+  canvas { position: absolute; inset: 0; width: 100vw; height: 100vh; z-index: 1; }
+
+  /* ---------------------------------------------------------------- glass bubble
+     Not a notification card: a translucent droplet of water carrying her music.
+     Blur, tint and rim all come from the spec's material table. */
+  #bubble {
+    position: absolute; left: 0; top: 0; width: 352px; height: 168px;
+    transform: translate(-50%, -100%) scale(0.92);
+    opacity: 0; z-index: 5; pointer-events: none;
+    transition: opacity .34s ease, transform .34s cubic-bezier(.2,.8,.3,1);
+    will-change: transform, opacity;
+  }
+  #bubble.show { opacity: 1; }
+
+  .glass {
+    position: relative; width: 100%; height: 100%;
+    border-radius: 24px;
+    background:
+      linear-gradient(135deg, rgba(150, 235, 255, .20) 0%, rgba(10, 44, 62, .20) 45%, rgba(40, 110, 130, .17) 100%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    backdrop-filter: blur(22px) saturate(180%);
+    border: 1px solid rgba(185, 240, 255, .34);
+    box-shadow:
+      0 20px 46px rgba(0, 24, 40, .26),          /* soft ambient shadow */
+      0 0 34px rgba(90, 210, 255, .16),          /* faint cyan glow */
+      inset 0 1px 0 rgba(255, 255, 255, .38),    /* top rim light */
+      inset 0 -1px 0 rgba(120, 200, 230, .18);
+    overflow: hidden;
+    animation: breathe 4.2s ease-in-out infinite;
+  }
+  @keyframes breathe {
+    0%, 100% { transform: scale(0.995); }
+    50%      { transform: scale(1.010); }
+  }
+
+  /* iridescent rim shift, like light through a soap film */
+  .glass::before {
+    content: ""; position: absolute; inset: -1px; border-radius: 25px;
+    padding: 1px;
+    background: linear-gradient(120deg,
+      rgba(150, 255, 255, .55), rgba(180, 160, 255, .35) 30%,
+      rgba(120, 255, 220, .30) 60%, rgba(160, 210, 255, .50));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    opacity: .55; pointer-events: none;
+    animation: rimShift 11s linear infinite;
+  }
+  @keyframes rimShift {
+    0%   { filter: hue-rotate(0deg);   opacity: .42; }
+    50%  { filter: hue-rotate(28deg);  opacity: .70; }
+    100% { filter: hue-rotate(0deg);   opacity: .42; }
+  }
+
+  /* inner reflection sweeping across the glass every 9s */
+  .glass::after {
+    content: ""; position: absolute; top: -30%; left: -60%;
+    width: 55%; height: 170%; pointer-events: none;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,.22), transparent);
+    transform: rotate(12deg);
+    animation: shimmer 9s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    0%, 62% { left: -60%; opacity: 0; }
+    70%     { opacity: .85; }
+    86%     { left: 120%; opacity: 0; }
+    100%    { left: 120%; opacity: 0; }
+  }
+
+
+  .content { position: absolute; inset: 0; padding: 16px 18px; display: flex; flex-direction: column; }
+  .top { display: flex; gap: 12px; align-items: flex-start; }
+  .art {
+    width: 64px; height: 64px; border-radius: 14px; flex: 0 0 64px;
+    background: linear-gradient(135deg, #123b52, #0a7387 55%, #17b6c9);
+    box-shadow: 0 6px 14px rgba(0, 20, 35, .34), inset 0 1px 0 rgba(255,255,255,.28);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; color: rgba(230, 255, 255, .85); overflow: hidden;
+  }
+  .art img { width: 100%; height: 100%; object-fit: cover; }
+  .meta { min-width: 0; flex: 1; }
+  .label {
+    font-size: 9px; letter-spacing: .14em; text-transform: uppercase;
+    color: rgba(190, 240, 255, .78); margin-bottom: 3px; display: flex; align-items: center; gap: 5px;
+  }
+  .dot { width: 5px; height: 5px; border-radius: 50%; background: #4bf0c2; box-shadow: 0 0 8px #4bf0c2; }
+  .dot.idle { background: #9fb6c0; box-shadow: none; }
+  .title {
+    font-size: 16px; font-weight: 600; color: #f2fbff; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; letter-spacing: .1px;
+    text-shadow: 0 1px 3px rgba(0, 20, 30, .55);
+  }
+  .artist {
+    font-size: 12px; color: rgba(214, 240, 250, .82); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .spotify { width: 16px; height: 16px; opacity: .85; flex: 0 0 16px; }
+
+  .bottom { margin-top: auto; }
+  .times { display: flex; justify-content: space-between; font-size: 10px; color: rgba(200,235,245,.75); }
+  .bar { height: 3px; border-radius: 2px; background: rgba(255,255,255,.20); margin: 5px 0 9px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0%; border-radius: 2px;
+           background: linear-gradient(90deg, rgba(180,255,255,.95), rgba(120,220,255,.85)); transition: width .4s linear; }
+  .controls { display: flex; justify-content: center; gap: 26px; color: #eefcff; }
+  .controls button {
+    background: none; border: 0; padding: 4px; cursor: pointer; color: inherit;
+    line-height: 0; opacity: .88; pointer-events: auto; border-radius: 8px;
+    transition: opacity .18s ease, background .18s ease;
+  }
+  .controls button svg { width: 18px; height: 18px; display: block; }
+  .controls button:hover { opacity: 1; background: rgba(255,255,255,.10); }
+  .controls button:active { transform: scale(.94); }
+  .controls button:hover { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="shadow"></div>
+  <div id="shadow"></div>
+  <canvas id="c"></canvas>
+
+  <div id="bubble" aria-live="polite">
+    <div class="glass">
+      <div class="content">
+        <div class="top">
+          <div class="art" id="art">♪</div>
+          <div class="meta">
+            <div class="label"><span class="dot idle" id="dot"></span><span id="status">Waiting for music</span></div>
+            <div class="title" id="title">Not connected</div>
+            <div class="artist" id="artist">Spotify is not wired yet</div>
+          </div>
+          <svg class="spotify" viewBox="0 0 24 24" fill="currentColor" style="color:#7ef7c0">
+            <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm4.6 14.4a.78.78 0 01-1.07.26c-2.93-1.79-6.62-2.2-10.97-1.2a.78.78 0 11-.35-1.52c4.75-1.09 8.83-.62 12.13 1.39.37.22.49.7.26 1.07zm1.23-2.74a.97.97 0 01-1.34.32c-3.35-2.06-8.46-2.66-12.42-1.45a.97.97 0 11-.56-1.86c4.52-1.37 10.15-.7 14 .96.46.28.6.88.32 1.33zm.11-2.85C14.05 8.42 7.5 8.2 3.9 9.3a1.17 1.17 0 11-.68-2.24c4.13-1.25 11.36-.99 15.5 1.47a1.17 1.17 0 01-1.2 2z"/>
+          </svg>
+        </div>
+        <div class="bottom">
+          <div class="times"><span id="tNow">0:00</span><span id="tLeft">-0:00</span></div>
+          <div class="bar"><i id="prog"></i></div>
+          <div class="controls">
+            <button data-act="prev" title="Previous" aria-label="Previous">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zm12 .6v12.8c0 .8-.9 1.3-1.6.9l-9-6.4a1.1 1.1 0 010-1.8l9-6.4c.7-.4 1.6.1 1.6.9z"/></svg>
+            </button>
+            <button data-act="toggle" title="Play / pause" aria-label="Play or pause">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5h3v14H8zm5 0h3v14h-3z"/></svg>
+            </button>
+            <button data-act="next" title="Next" aria-label="Next">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM6 5.6v12.8c0 .8.9 1.3 1.6.9l9-6.4a1.1 1.1 0 000-1.8l-9-6.4C6.9 4.3 6 4.8 6 5.6z"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="bundle.js"></script>
+</body>
+</html>

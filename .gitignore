@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.log
+debug.log
+test-*.png
+shot-window.png
+rect.json
+.DS_Store

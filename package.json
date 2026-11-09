@@ -1,0 +1,54 @@
+{
+  "name": "orca-desktop-pet",
+  "version": "1.0.0",
+  "description": "A little glass orca that swims across your desktop.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "bundle": "esbuild src/app.js --bundle --format=iife --minify --outfile=bundle.js",
+    "dist:win": "npm run bundle && electron-builder --win portable",
+    "dist:mac": "npm run bundle && electron-builder --mac"
+  },
+  "author": "Rachel",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2"
+  },
+  "build": {
+    "appId": "com.rachel.orcapet",
+    "productName": "Orca Pet",
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "bundle.js",
+      "assets/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/tray.png"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.entertainment"
+    },
+    "portable": {
+      "artifactName": "OrcaPet.exe"
+    }
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "productName": "Orca Pet"
+}
