@@ -1,13 +1,14 @@
 {
   "name": "orca-desktop-pet",
-  "version": "1.1.0",
+  "version": "1.1.2",
   "description": "A little glass orca that swims across your desktop.",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "bundle": "esbuild src/app.js --bundle --format=iife --minify --outfile=bundle.js",
-    "dist:win": "npm run bundle && electron-builder --win portable",
-    "dist:mac": "npm run bundle && electron-builder --mac"
+    "dist:win": "npm run verify && electron-builder --win portable",
+    "dist:mac": "npm run verify && electron-builder --mac",
+    "verify": "npm run bundle && node --check main.js && node --check spotify.js && node -e \"const s=require('fs').statSync('bundle.js');if(s.size<400000)throw new Error('bundle suspiciously small: '+s.size);console.log('bundle ok',s.size)\""
   },
   "author": "Rachel",
   "license": "MIT",

@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Orca</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' file: blob:; img-src 'self' file: blob: data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' file: blob:; connect-src 'self' file: blob: data:; object-src 'none'; base-uri 'none'">
 <style>
   * { box-sizing: border-box; user-select: none; }
   html, body {
@@ -24,19 +25,7 @@
     transition: opacity .4s ease;
   }
 
-  /* soft contact shadow under her, so she reads as floating above the desktop
-     rather than pasted onto it */
-  #shadow {
-    position: absolute; left: 0; top: 0; width: 120px; height: 22px;
-    transform: translate(-50%, -50%);
-    border-radius: 50%;
-    background: radial-gradient(ellipse at center, rgba(0, 10, 20, 0.42) 0%,
-                                rgba(0, 10, 20, 0.22) 45%, rgba(0, 10, 20, 0) 72%);
-    filter: blur(9px);
-    opacity: 0; z-index: 0; pointer-events: none;
-    transition: opacity .4s ease;
-  }
-  canvas { position: absolute; inset: 0; width: 100vw; height: 100vh; z-index: 1; }
+    canvas { position: absolute; inset: 0; width: 100vw; height: 100vh; z-index: 1; }
 
   /* ---------------------------------------------------------------- glass bubble
      Not a notification card: a translucent droplet of water carrying her music.
@@ -153,7 +142,7 @@
 <body>
 <div id="stage">
   <div id="shadow"></div>
-  <div id="shadow"></div>
+  
   <canvas id="c"></canvas>
 
   <div id="bubble" aria-live="polite">

@@ -223,17 +223,15 @@ class Spotify {
       const ok = await this.refresh();
       if (!ok) return { status: 401 };
     }
-    let r = await request(API + endpoint, {
-      method,
-      headers: { Authorization: `Bearer ${this.token.access_token}` }
-    });
+    const headers = { Authorization: `Bearer ${this.token.access_token}` };
+    if (method !== 'GET') { headers['Content-Length'] = '0'; }
+    let r = await request(API + endpoint, { method, headers });
     if (r.status === 401) {
       const ok = await this.refresh();
       if (ok) {
-        r = await request(API + endpoint, {
-          method,
-          headers: { Authorization: `Bearer ${this.token.access_token}` }
-        });
+        const h2 = { Authorization: `Bearer ${this.token.access_token}` };
+        if (method !== 'GET') h2['Content-Length'] = '0';
+        r = await request(API + endpoint, { method, headers: h2 });
       }
     }
     return r;
@@ -245,8 +243,17 @@ class Spotify {
     if (!this.isConnected()) return;
     const tick = async () => {
       const r = await this.api('/me/player');
-      if (r.status === 204) return this.emit(null);           // connected, nothing playing
-      if (r.status === 401) return this.emit({ needsAuth: true });
+      if (r.status === 204) { this.authFails = 0; return this.emit(null); }   // nothing playing
+      if (r.status === 401) {
+        this.authFails = (this.authFails || 0) + 1;
+        this.emit({ needsAuth: true });
+        if (this.authFails >= 3) {
+          this.log('spotify: giving up after repeated auth failures');
+          this.stopPolling();
+        }
+        return;
+      }
+      this.authFails = 0;
       if (r.status !== 200 || !r.body) return;
       const p = r.body;
       const item = p.item;

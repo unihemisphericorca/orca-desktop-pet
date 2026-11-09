@@ -7,16 +7,19 @@
 //     EXCEPT when the cursor is over the orca, where we turn the flag off again.
 const path = require('path');
 const fs = require('fs');
-const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, shell, dialog } = require('electron');
 const { Spotify } = require('./spotify');
-const LOG = path.join(__dirname, 'debug.log');
 function log(...a) {
-  try { fs.appendFileSync(LOG, new Date().toISOString() + ' ' + a.join(' ') + '\n'); } catch (e) {}
+  try {
+    fs.appendFileSync(path.join(dataDir(), 'orca.log'),
+      new Date().toISOString() + ' ' + a.join(' ') + '\n');
+  } catch (e) { /* logging must never break the pet */ }
 }
 
 let win = null;
 let tray = null;
 let spotify = null;
+let rebuildTrayMenu = null;   // rebuilt so the Spotify label reflects the current state
 
 // Portable builds unpack to a temp dir, so config and tokens live next to the .exe
 // instead — otherwise the Spotify login would be forgotten on every launch.
@@ -68,14 +71,16 @@ function createWindow() {
 
   win.showInactive();          // appear without stealing focus
 
-  // Self-check: screenshot the pet's own window so we can confirm it renders,
-  // independent of whether a desktop capture picks up a layered window.
-  setTimeout(() => {
-    win.webContents.capturePage().then((img) => {
-      fs.writeFileSync(path.join(__dirname, 'shot-window.png'), img.toPNG());
-      log('captured own window', JSON.stringify(img.getSize()));
-    }).catch((e) => log('capture failed', String(e)));
-  }, 2500);
+  // Self-check screenshot: only while developing. In a packaged build it wrote into the
+  // read-only asar and did nothing but waste a capture on every launch.
+  if (!app.isPackaged) {
+    setTimeout(() => {
+      win.webContents.capturePage().then((img) => {
+        fs.writeFileSync(path.join(__dirname, 'shot-window.png'), img.toPNG());
+        log('captured own window', JSON.stringify(img.getSize()));
+      }).catch((e) => log('capture failed', String(e)));
+    }, 2500);
+  }
   // Screenshot mode: ORCA_SHOT=1 renders one promo frame with a backdrop and the card open.
   if (process.env.ORCA_SHOT) {
     win.webContents.on('did-finish-load', () => {
@@ -146,10 +151,9 @@ function createWindow() {
 let rectLogged = false;
 ipcMain.on('orca-rect', (_evt, rects) => {
   orcaRects = rects;
-  if (!rectLogged && rects && rects.body && rects.body.w > 0) {
+  if (!rectLogged && rects) {
     rectLogged = true;
-    const b = rects.body;
-    log('orca screen rect', JSON.stringify({ x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h) }));
+    log('orca screen rect', JSON.stringify(rects));
   }
 });
 
@@ -228,7 +232,9 @@ app.whenReady().then(() => {
   if (!icon.isEmpty()) {
     tray = new Tray(icon);
     tray.setToolTip('Orca');
-    tray.setContextMenu(Menu.buildFromTemplate([
+    buildTrayMenu();
+    function buildTrayMenu() {
+      tray.setContextMenu(Menu.buildFromTemplate([
       {
         label: 'Natural colours (uncheck for pearl skin)',
         type: 'checkbox',
@@ -237,18 +243,38 @@ app.whenReady().then(() => {
       },
       { type: 'separator' },
       {
-        label: 'Connect Spotify…',
+        label: spotify && spotify.isConnected() ? 'Reconnect Spotify…' : 'Connect Spotify…',
         click: async () => {
           if (!spotify) return;
           if (!spotify.hasClientId()) {
-            log('spotify: no client id; expected at', spotify.cfgFile);
+            dialog.showMessageBox({
+              type: 'info',
+              title: 'Spotify Client ID missing',
+              message: 'No Spotify Client ID found.',
+              detail: `Create ${spotify.cfgFile} containing:\n\n{ "clientId": "your-id" }\n\n` +
+                      'You can copy spotify.json.example and fill it in. Full walkthrough is in the README.'
+            });
             return;
           }
           const r = await spotify.connect((url) => shell.openExternal(url));
           log('spotify: connect result', JSON.stringify(r));
+          if (!r || !r.ok) {
+            dialog.showMessageBox({
+              type: 'error',
+              title: 'Spotify connection failed',
+              message: 'Could not connect to Spotify.',
+              detail: `Reason: ${(r && (r.reason || r.error)) || 'unknown'}\n\n` +
+                      'Most common cause: the Redirect URI in your Spotify app must be exactly\n' +
+                      'http://127.0.0.1:8888/callback\n\n' +
+                      `A log with the details is at ${path.join(dataDir(), 'orca.log')}.`
+            });
+          } else {
+            if (rebuildTrayMenu) rebuildTrayMenu();
+            dialog.showMessageBox({ type: 'info', title: 'Spotify connected', message: 'She can see your music now 🐋' });
+          }
         }
       },
-      { label: 'Disconnect Spotify', click: () => spotify && spotify.disconnect() },
+      { label: 'Disconnect Spotify', click: () => { if (spotify) spotify.disconnect(); if (rebuildTrayMenu) rebuildTrayMenu(); } },
       { type: 'separator' },
       {
         label: 'Credits: Orca model by Lippanen (CC BY 4.0)',
@@ -256,8 +282,20 @@ app.whenReady().then(() => {
       },
       { type: 'separator' },
       { label: 'Quit Orca', click: () => app.quit() }
-    ]));
+      ]));
+    }
+    rebuildTrayMenu = buildTrayMenu;
   }
+
+  const refit = () => {
+    if (!win || win.isDestroyed()) return;
+    const { workArea } = screen.getPrimaryDisplay();
+    win.setBounds(workArea);
+    log('refit to display', JSON.stringify(workArea));
+  };
+  screen.on('display-metrics-changed', refit);
+  screen.on('display-added', refit);
+  screen.on('display-removed', refit);
 
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });

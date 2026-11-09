@@ -28,9 +28,9 @@ const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerH
 camera.position.set(1.6, 2.6, 8.4);
 camera.lookAt(0, 0.1, 0);
 
-const key = new THREE.DirectionalLight(0xffffff, 2.6); key.position.set(2.4, 5.2, 3.2); scene.add(key);
+const key = new THREE.DirectionalLight(0xffffff, 1.9); key.position.set(2.4, 5.2, 3.2); scene.add(key);
 const fill = new THREE.DirectionalLight(0x9dc6e8, 1.6); fill.position.set(-3.6, 1.0, 2.2); scene.add(fill);
-const rim = new THREE.DirectionalLight(0xbfe6ff, 2.2); rim.position.set(-1.4, 2.0, -5.0); scene.add(rim);
+const rim = new THREE.DirectionalLight(0xbfe6ff, 1.5); rim.position.set(-1.4, 2.0, -5.0); scene.add(rim);
 scene.add(new THREE.HemisphereLight(0xdcefff, 0x14232c, 1.2));
 
 const uniforms = {
@@ -42,41 +42,7 @@ const uniforms = {
 const root = new THREE.Group();
 scene.add(root);
 
-const uniforms = {
-  uTime: { value: 0 }, uSwim: { value: 1.0 }, uJaw: { value: 0.0 }, uBend: { value: 0.0 },
-  uZMin: { value: -2.5 }, uZMax: { value: 2.5 }, uAmp: { value: 0.22 },
-  uPhase: { value: 0 }, uSwing: { value: 1 }
-};
 
-const root = new THREE.Group();
-scene.add(root);
-
-// contact shadow: a gradient plane under her, so she reads as floating above the desktop
-function makeShadowTexture() {
-  const c = document.createElement('canvas');
-  c.width = c.height = 256;
-  const g = c.getContext('2d');
-  const grad = g.createRadialGradient(128, 128, 8, 128, 128, 126);
-  grad.addColorStop(0.0, 'rgba(0,8,16,0.55)');
-  grad.addColorStop(0.45, 'rgba(0,8,16,0.30)');
-  grad.addColorStop(0.78, 'rgba(0,8,16,0.06)');
-  grad.addColorStop(1.0, 'rgba(0,8,16,0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 256, 256);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-const shadowMesh = new THREE.Mesh(
-  new THREE.PlaneGeometry(1, 1),
-  new THREE.MeshBasicMaterial({
-    map: makeShadowTexture(), transparent: true, depthWrite: false, opacity: 0.85
-  })
-);
-shadowMesh.scale.set(4.4, 1.5, 1);
-shadowMesh.renderOrder = -1;
-scene.add(shadowMesh);
 let pivot = null;
 const headPoint = new THREE.Vector3();
 
@@ -251,7 +217,7 @@ loader.load('assets/orca-bought.glb', (gltf) => {
     if (src.normalMap) src.normalScale.set(0.85, 0.85);
 
     // the shipped material stays available as the natural fallback
-    src.roughness = 0.82;
+    src.roughness = 0.9;
     src.metalness = 0.0;
     src.envMapIntensity = 0.06;
     patchSwim(src);
@@ -740,16 +706,6 @@ function hitTest(cx, cy) {
 }
 
 let over = false;
-// diagnostic: prove whether input reaches the page at all
-let lastMoveLog = 0;
-window.addEventListener('pointermove', (e) => {
-  const n = performance.now();
-  if (n - lastMoveLog > 800) {
-    lastMoveLog = n;
-    console.log('pointermove', Math.round(e.clientX), Math.round(e.clientY));
-  }
-});
-window.addEventListener('pointerdown', (e) => console.log('window pointerdown', Math.round(e.clientX), Math.round(e.clientY)), true);
 let press = null;        // {x, y, offsetX, offsetY, moved}
 let lastClickAt = 0;
 let lastClickPos = { x: 0, y: 0 };
@@ -786,7 +742,6 @@ canvas.addEventListener('pointermove', (e) => {
 canvas.addEventListener('pointerdown', (e) => {
   const nearMiss = Math.hypot(e.clientX - window.__centreX, e.clientY - window.__centreY) < 22;
   const onBody = hitTest(e.clientX, e.clientY);
-  console.log('pointerdown', JSON.stringify({ x: Math.round(e.clientX), y: Math.round(e.clientY), onBody, nearMiss }));
   if (!onBody && !nearMiss) return;
   press = { x: e.clientX, y: e.clientY, offsetX: e.clientX - pose.x, offsetY: e.clientY - pose.y, moved: false };
   canvas.setPointerCapture(e.pointerId);

@@ -145,6 +145,7 @@ To revoke, use tray → **Disconnect Spotify**, and remove the app at
 | Browser shows `INVALID_CLIENT: Invalid redirect URI` | The Redirect URI in the dashboard isn't exactly `http://127.0.0.1:8888/callback` |
 | Nothing happens on "Connect Spotify…" | Another program is using port 8888 — change the port in both `spotify.js` and the dashboard |
 | Card says "Reconnect needed" | The refresh token expired or was revoked — Disconnect, then Connect again |
+| Nothing visible happens | A dialog now explains the failure, and `orca.log` next to the exe has the details |
 
 ---
 
